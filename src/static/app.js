@@ -17,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
+        activityCard.dataset.maxParticipants = details.max_participants;
 
         const spotsLeft = details.max_participants - details.participants.length;
 
@@ -24,8 +25,35 @@ document.addEventListener("DOMContentLoaded", () => {
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <p class="availability"><strong>Availability:</strong> <span>${spotsLeft} spots left</span></p>
+          <div class="participants-section">
+            <h5>Participants</h5>
+            <ul class="participants-list"></ul>
+          </div>
         `;
+
+        const participantsList = activityCard.querySelector(".participants-list");
+        if (details.participants.length > 0) {
+          details.participants.forEach((email) => {
+            const participant = document.createElement("li");
+            const participantEmail = document.createElement("span");
+            participantEmail.textContent = email;
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "delete-participant";
+            deleteButton.textContent = "×";
+            deleteButton.setAttribute("aria-label", `Remove ${email} from ${name}`);
+            deleteButton.dataset.activity = name;
+            deleteButton.dataset.email = email;
+            participant.append(participantEmail, deleteButton);
+            participantsList.appendChild(participant);
+          });
+        } else {
+          const emptyMessage = document.createElement("p");
+          emptyMessage.className = "no-participants";
+          emptyMessage.textContent = "No participants yet";
+          activityCard.querySelector(".participants-section").appendChild(emptyMessage);
+        }
 
         activitiesList.appendChild(activityCard);
 
@@ -40,6 +68,53 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error fetching activities:", error);
     }
   }
+
+  activitiesList.addEventListener("click", async (event) => {
+    const deleteButton = event.target.closest(".delete-participant");
+    if (!deleteButton) {
+      return;
+    }
+
+    const { activity, email } = deleteButton.dataset;
+    deleteButton.disabled = true;
+
+    try {
+      const response = await fetch(
+        `/activities/${encodeURIComponent(activity)}/participants?email=${encodeURIComponent(email)}`,
+        { method: "DELETE" }
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        messageDiv.textContent = result.detail || "Failed to remove participant";
+        messageDiv.className = "error";
+        messageDiv.classList.remove("hidden");
+        return;
+      }
+
+      const activityCard = deleteButton.closest(".activity-card");
+      const participant = deleteButton.closest("li");
+      const participantsList = participant.parentElement;
+      participant.remove();
+
+      if (participantsList.children.length === 0) {
+        const emptyMessage = document.createElement("p");
+        emptyMessage.className = "no-participants";
+        emptyMessage.textContent = "No participants yet";
+        participantsList.parentElement.appendChild(emptyMessage);
+      }
+
+      const spotsLeft = Number(activityCard.dataset.maxParticipants) - participantsList.children.length;
+      activityCard.querySelector(".availability span").textContent = `${spotsLeft} spots left`;
+    } catch (error) {
+      messageDiv.textContent = "Failed to remove participant. Please try again.";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+      console.error("Error removing participant:", error);
+    } finally {
+      deleteButton.disabled = false;
+    }
+  });
 
   // Handle form submission
   signupForm.addEventListener("submit", async (event) => {
